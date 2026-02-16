@@ -3,23 +3,27 @@ from langchain_openai import ChatOpenAI
 from src.settings import settings
 from src.types import LLMProvider
 
-llm_ollama = ChatOllama(
-    model="llama3.1:8b",
-    temperature=0.3,
-)
+def get_ollama():
+    llm_ollama = ChatOllama(
+        model="llama3.1:8b",
+        temperature=0.3,
+    )
+    return llm_ollama
 
-llm_openai = ChatOpenAI(
-    model="gpt-5-mini",
-    temperature=0.3,
-    timeout=None,
-    max_retries=2,
-    api_key=settings.openai_api_key
-)
+def get_openai():
+    llm_openai = ChatOpenAI(
+        model="gpt-5-mini",
+        temperature=0.3,
+        timeout=None,
+        max_retries=2,
+        api_key=settings.openai_api_key
+    )
+    return llm_openai
 
 def get_llm(provider: LLMProvider):
     if provider == LLMProvider.OLLAMA:
-        return llm_ollama
+        return get_ollama()
     elif provider == LLMProvider.OPENAI:
-        return llm_openai
+        return get_openai()
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")

@@ -3,8 +3,9 @@ from src.llms import get_llm
 from src.types import LLMProvider
 from argparse import ArgumentParser
 from pydantic import BaseModel, Field
+from enum import Enum
 
-class EntityType(str):
+class EntityType(str, Enum):
     NAME = "name"
     EMAIL = "email"
     PHONE = "phone"
@@ -35,8 +36,8 @@ class Masker:
     
     def extract_pii(self, doc) -> list[PIIEntity]:
         pii_entities = []
-        from_page = int(self.args.from_page_no)-1 if self.args.from_page_no else 0
-        to_page = int(self.args.to_page_no) if self.args.to_page_no else doc.page_count
+        from_page = int(self.kwargs.get("from_page_no", 1)) - 1 if self.kwargs.get("from_page_no") else 0
+        to_page = int(self.kwargs.get("to_page_no", doc.page_count)) if self.kwargs.get("to_page_no") else doc.page_count
         
         for page_index in range(from_page, to_page):
             page = doc.load_page(page_index)
@@ -46,10 +47,14 @@ class Masker:
         
         return pii_entities
 
-    def mask(self, args):
-        self.args = args
+    def mask(self, **kwargs):
+        self.kwargs = kwargs
         
-        doc = pymupdf.open(args.input_pdf)
+        # if pdf is already given:
+        if kwargs.get("input_pdf"):
+            doc = pymupdf.open(stream=kwargs["input_pdf"].read(), filetype="pdf")
+        else:
+            doc = pymupdf.open(kwargs["input_path"])
         
         entities_to_redact = self.extract_pii(doc)
 
@@ -64,21 +69,25 @@ class Masker:
             # Apply redactions for the page
             page.apply_redactions()
 
-        doc.save(args.output_pdf)
-        doc.close()
+        # Return redacted PDF
+        return doc.convert_to_pdf()
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Redact text in a PDF file")
-    parser.add_argument("--input_pdf", required=True, help="Input PDF file path")
+    parser.add_argument("--input_path", help="Input PDF file path")
+    parser.add_argument("--input_pdf", help="Input PDF")
     parser.add_argument("--output_pdf", required=True, help="Output PDF file path")
     parser.add_argument("--llm_provider", required=True, help="LLM provider to use for PII extraction. Currently supports 'openai' and 'ollama'")
     parser.add_argument("--from_page_no", default=None, help="From page number to start redaction, Defaults to the first page if not provided")
     parser.add_argument("--to_page_no", default=None, help="To page number to end redaction, Defaults to the last page if not provided")
 
     args = parser.parse_args()
+    
+    # convert args to dict and pass to masker.mask()
+    args = vars(args)
 
-    masker = Masker(LLMProvider(args.llm_provider))
-    masker.mask(args)
+    masker = Masker(LLMProvider(args["llm_provider"]))
+    masker.mask(**args)
     
     # Usage example:
     # python src/maskit/maskit.py --input_pdf ../src/data/sample.pdf --output_pdf ../src/data/sample_redacted.pdf --llm_provider openai
