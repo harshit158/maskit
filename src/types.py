@@ -1,5 +1,5 @@
 from enum import Enum
 
-class LLMProvider(Enum):
+class LLMProvider(str, Enum):
     OLLAMA = "ollama"
     OPENAI = "openai"

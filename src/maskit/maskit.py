@@ -34,10 +34,10 @@ class Masker:
         
         return entities
     
-    def extract_pii(self, doc) -> list[PIIEntity]:
+    def extract_pii(self, doc, **kwargs) -> list[PIIEntity]:
         pii_entities = []
-        from_page = int(self.kwargs.get("from_page_no", 1)) - 1 if self.kwargs.get("from_page_no") else 0
-        to_page = int(self.kwargs.get("to_page_no", doc.page_count)) if self.kwargs.get("to_page_no") else doc.page_count
+        from_page = int(kwargs.get("from_page_no", 1)) - 1 if kwargs.get("from_page_no") else 0
+        to_page = int(kwargs.get("to_page_no", doc.page_count)) if kwargs.get("to_page_no") else doc.page_count
         
         for page_index in range(from_page, to_page):
             page = doc.load_page(page_index)
@@ -47,7 +47,27 @@ class Masker:
         
         return pii_entities
 
-    def mask(self, **kwargs):
+    def highlight_pii(self, doc, entities: list[PIIEntity]) -> bytes:
+        if entities:
+            for page in doc:
+                for entity in entities:
+                    text_instances = page.search_for(entity.text)
+                    for inst in text_instances:
+                        highlight = page.add_highlight_annot(inst)
+                        highlight.set_info(content=f"PII Type: {entity.type}")
+        return doc.convert_to_pdf()
+
+    def redact_pii(self, doc, entities: list[PIIEntity]) -> bytes:
+        if entities:
+            for page in doc:
+                for entity in entities:
+                    text_instances = page.search_for(entity.text)
+                    for inst in text_instances:
+                        page.add_redact_annot(inst, fill=(0, 0, 0))
+                page.apply_redactions()
+        return doc.convert_to_pdf()
+    
+    def mask(self, **kwargs) -> bytes:
         self.kwargs = kwargs
         
         # if pdf is already given:
@@ -56,21 +76,17 @@ class Masker:
         else:
             doc = pymupdf.open(kwargs["input_path"])
         
-        entities_to_redact = self.extract_pii(doc)
+        entities_to_redact = self.extract_pii(doc, **kwargs)
 
-        for page in doc:  # iterate pages
-            for entity in entities_to_redact:
-                # Search for all occurrences of entity text
-                text_instances = page.search_for(entity.text)
-                for inst in text_instances:
-                    # Add redaction annotation
-                    page.add_redact_annot(inst, fill=(0, 0, 0))
-            
-            # Apply redactions for the page
-            page.apply_redactions()
+        if kwargs.get("highlight_only"):
+            # Highlight entities in the document
+            doc = self.highlight_pii(doc, entities_to_redact)
+        else:
+            # Redact entities in the document
+            doc = self.redact_pii(doc, entities_to_redact)
 
         # Return redacted PDF
-        return doc.convert_to_pdf()
+        return doc
 
 if __name__ == "__main__":
     parser = ArgumentParser(description="Redact text in a PDF file")
@@ -80,6 +96,7 @@ if __name__ == "__main__":
     parser.add_argument("--llm_provider", required=True, help="LLM provider to use for PII extraction. Currently supports 'openai' and 'ollama'")
     parser.add_argument("--from_page_no", default=None, help="From page number to start redaction, Defaults to the first page if not provided")
     parser.add_argument("--to_page_no", default=None, help="To page number to end redaction, Defaults to the last page if not provided")
+    parser.add_argument("--highlight_only", action="store_true", help="Only highlight PII entities without redaction")
 
     args = parser.parse_args()
     

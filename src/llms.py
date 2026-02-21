@@ -5,7 +5,7 @@ from src.types import LLMProvider
 
 def get_ollama():
     llm_ollama = ChatOllama(
-        model="llama3.1:8b",
+        model=settings.ollama_model_id,
         temperature=0.3,
     )
     return llm_ollama

@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     openai_api_key: str = ""
+    ollama_model_id: str = ""
 
     class Config:
         env_file = ".env"
